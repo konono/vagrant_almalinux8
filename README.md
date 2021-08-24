@@ -11,7 +11,7 @@ sudo dnf install https://releases.hashicorp.com/vagrant/2.2.18/vagrant_2.2.18_x8
 
 ### Install dependency packages
 ```
-dnf install qemu-kvm qemu-img libvirt virt-install libvirt-client libvirt-devel ruby-devel gcc libxslt-devel libxml2-devel  libguestfs-tools-c ruby-devel flex bison gcc make cmake ruby-devel
+dnf install qemu-kvm qemu-img libvirt virt-install libvirt-client libvirt-devel ruby-devel gcc gcc-c++ libxslt-devel libxml2-devel libguestfs-tools-c ruby-devel flex bison gcc make cmake ruby-devel
 ```
 
 ### Prepare modules for vagrant-libvirt
