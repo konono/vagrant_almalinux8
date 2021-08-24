@@ -1,0 +1,103 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+### Set some variables
+# Path to the local users public key file in $HOME/.ssh
+# We use it later in the shell provisioner to populate authorized_keys
+ssh_pub_key = File.readlines("#{Dir.home}/.ssh/id_rsa.pub").first.strip
+rht_pass = File.readlines("#{Dir.home}/rht/rht_password.txt").first.strip
+rht_user = File.readlines("#{Dir.home}/rht/rht_user.txt").first.strip
+
+###================================================   Main   ==================================================###
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/rhel8"
+  config.vm.box_check_update = false
+   config.ssh.username = 'vagrant'
+
+  config.vm.define :r1 do |r1|
+    r1.vm.hostname = "r1"
+
+    r1.vm.network :public_network,
+      # Static IP configuration if you use comment out.
+      #ip: "192.168.0.2",
+      #netmask: "255.255.255.0",
+      dev: "internet",
+      mode: "bridge",
+      type: "bridge"
+
+    r1.vm.provider :libvirt do |lv|
+      lv.cpus = 4
+      lv.memory = 8192
+      lv.boot 'hd'
+      lv.machine_virtual_size = 100
+      lv.cpu_mode = 'host-passthrough'
+      lv.machine_arch = "x86_64"
+      lv.autostart = true
+      lv.nested = true
+      lv.uri = 'qemu+unix:///system'
+      lv.management_network_name = "vagrant-mgmt"
+      lv.management_network_mode = "none"
+      lv.management_network_address = "172.16.3.0/24"
+      lv.management_network_mac = "52:54:00:00:01:20"
+
+    end ###--- End Provider
+
+  end ###--- End VM.Define
+
+  ###------------------------------   Provisioning   -------------------------------###
+  config.vm.provision "Setup shell environment", type: "shell" do |s|
+    s.inline = <<-SHELL
+
+    # Add the public keys "adminvm" is a VM I use for testing things like Ansible
+    # Clearlinux box doesn't havre a vagrant user - the user is "clear"
+    mkdir /root/.ssh
+    chmod 700 /root/.ssh
+    touch /root/.ssh/authorized_keys
+
+    echo "Appending user@Laptop keys to root and vagrant authorized_keys"
+    echo #{ssh_pub_key} >> /home/vagrant/.ssh/authorized_keys
+    echo #{ssh_pub_key} >> /root/.ssh/authorized_keys
+
+    # Register with RHN
+    echo "-------------------------------"
+    echo "Registering with Red Hat Portal"
+    echo "-------------------------------"
+    # Need to move these to a yaml dictionary - works for now
+    subscription-manager register --username #{rht_user} --password #{rht_pass} --auto-attach
+    subscription-manager repos --disable=* > /dev/null 2>&1
+    rm -fr /var/cache/yum/*
+    yum clean all > /dev/null 2>&1
+    subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms > /dev/null 2>&1
+    subscription-manager repos --enable=rhel-8-for-x86_64-appstream-rpms > /dev/null 2>&1
+
+    SHELL
+  end ###--- End Inline Provisioner
+
+  ###------------------------------   Triggers   -------------------------------###
+
+  config.trigger.before :destroy do |trigger|
+    trigger.name = "Unregister RHN Guest"
+    trigger.info = "Unregister"
+    trigger.run_remote = {inline: <<-SHELL
+    subscription-manager remove --all
+    subscription-manager unregister
+    subscription-manager clean
+    SHELL
+    }
+    trigger.on_error = :continue
+
+  end ###--- End Triggers
+
+  ###------------------------------   Trigger   -------------------------------###
+  config.trigger.after :up do |trigger|
+    trigger.info = "Create sh config after up operation"
+    trigger.run = {inline: "bash -c 'mkdir -p ~/.ssh/conf.d/hosts/ && vagrant ssh-config > ~/.ssh/conf.d/hosts/${PWD##*/}' "}
+  end ###--- End Trigger
+
+  config.trigger.after :destroy do |trigger|
+    trigger.info = "Delete ssh config after destroy operation"
+    trigger.run = {inline: "bash -c 'rm -rf ~/.ssh/conf.d/hosts/${PWD##*/}' "}
+  end ###--- End Trigger
+
+end #    EOF
