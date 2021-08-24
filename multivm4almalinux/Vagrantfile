@@ -1,0 +1,121 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+### Set some variables
+# Path to the local users public key file in $HOME/.ssh
+# We use it later in the shell provisioner to populate authorized_keys
+ssh_pub_key = File.readlines("#{Dir.home}/.ssh/id_rsa.pub").first.strip
+
+  ###------------------------------   Main   -------------------------------###
+
+Vagrant.configure("2") do |config|
+  #config.ssh.username = 'vagrant'
+  config.ssh.username = 'root'
+  config.ssh.password = 'vagrant'
+  config.ssh.insert_key = 'false'
+  # In order to use this configuration, you need to install NFS. If you want to use it, please implement the Post configuration above.
+  #config.vm.synced_folder "./share", "/root/share",
+  #  type: "nfs", nfs_version: "4", nfs_udp: false
+
+
+  config.vm.define :sv1 do |sv1|
+    sv1.vm.box = "almalinux/8"
+    sv1.vm.box_check_update = false
+    sv1.vm.hostname = "sv1"
+
+    sv1.vm.network :private_network,
+      ip: '10.0.0.2',
+      libvirt__network_name: "net1",
+      libvirt__dhcp_enabled: false,
+      libvirt__host_ip: '10.0.0.1',
+      libvirt__forward_mode: 'none'
+
+    sv1.vm.provider :libvirt do |lv|
+      lv.cpus = 4
+      lv.memory = 8192
+      lv.boot 'hd'
+      lv.machine_virtual_size = 100
+      lv.cpu_mode = 'host-passthrough'
+      lv.machine_arch = "x86_64"
+      lv.autostart = true
+      lv.nested = true
+      lv.uri = 'qemu+unix:///system'
+      lv.management_network_name = 'default'
+      lv.management_network_address = "192.168.122.0/24"
+      lv.forward_ssh_port = true
+
+    sv1.vm.network :forwarded_port, guest: 22, host: 20022, host_ip: "0.0.0.0", id: "ssh"
+
+    end ###--- End Provider
+
+  end ###--- End VM.Define
+
+  config.vm.define :sv2 do |sv2|
+    sv2.vm.box = "almalinux/8"
+    sv2.vm.box_check_update = false
+    sv2.vm.hostname = "sv2"
+
+    sv2.vm.network :private_network,
+      ip: '10.0.0.3',
+      libvirt__network_name: "net1",
+      libvirt__dhcp_enabled: false,
+      libvirt__host_ip: '10.0.0.1',
+      libvirt__forward_mode: 'none'
+
+    sv2.vm.provider :libvirt do |lv|
+      lv.storage_pool_name = 'images'
+      lv.cpus = 1
+      lv.memory = 2048
+      lv.boot 'hd'
+      lv.machine_virtual_size = 20
+      lv.cpu_mode = 'host-passthrough'
+      lv.machine_arch = "x86_64"
+      lv.autostart = true
+      lv.nested = true
+      lv.uri = 'qemu+unix:///system'
+      lv.management_network_name = 'default'
+      lv.management_network_address = "192.168.122.0/24"
+      lv.forward_ssh_port = true
+
+    sv2.vm.network :forwarded_port, guest: 22, host: 30022, host_ip: "0.0.0.0", id: "ssh"
+
+    end ###--- End Provider
+
+  end ###--- End VM.Define
+
+  ###------------------------------   Provisioning   -------------------------------###
+  config.vm.provision "Setup shell environment", type: "shell" do |s|
+    s.inline = <<-SHELL
+
+    # Add the public keys "adminvm" is a VM I use for testing things like Ansible
+    # Clearlinux box doesn't havre a vagrant user - the user is "clear"
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+    touch /root/.ssh/authorized_keys
+
+    echo "Appending user@Laptop keys to root and vagrant authorized_keys"
+    echo #{ssh_pub_key} >> /home/vagrant/.ssh/authorized_keys
+    echo #{ssh_pub_key} >> /root/.ssh/authorized_keys
+
+    echo "Expand root storage"
+
+    sudo dnf install -y cloud-utils-growpart
+    sudo growpart /dev/vda 2
+    sudo xfs_growfs /
+
+    SHELL
+
+  end ###--- End Inline Provisioner
+
+  ###------------------------------   Trigger   -------------------------------###
+  config.trigger.after :up do |trigger|
+    trigger.info = "Create sh config after up operation"
+    trigger.run = {inline: "bash -c 'mkdir -p ~/.ssh/conf.d/hosts/ && vagrant ssh-config > ~/.ssh/conf.d/hosts/${PWD##*/}' "}
+  end ###--- End Trigger
+
+  config.trigger.after :destroy do |trigger|
+    trigger.info = "Delete ssh config after destroy operation"
+    trigger.run = {inline: "bash -c 'rm -rf ~/.ssh/conf.d/hosts/${PWD##*/}' "}
+  end ###--- End Trigger
+
+end #    EOF
