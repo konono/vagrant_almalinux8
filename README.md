@@ -15,8 +15,8 @@ dnf install qemu-kvm qemu-img libvirt virt-install libvirt-client libvirt-devel 
 ```
 
 ### Prepare modules for vagrant-libvirt
-# compile krb5
 ```
+# compile krb5
 cd /tmp/; wget http://vault.centos.org/8.2.2004/BaseOS/Source/SPackages/krb5-1.17-18.el8.src.rpm
 rpm2cpio krb5-1.17-18.el8.src.rpm | cpio -imdV
 tar xf krb5-1.17.tar.gz
@@ -40,6 +40,7 @@ sudo cp lib/libssh* /opt/vagrant/embedded/lib64
 ```
 CONFIGURE_ARGS='with-ldflags=-L/opt/vagrant/embedded/lib with-libvirt-include=/usr/include/libvirt with-libvirt-lib=/usr/lib' GEM_HOME=~/.vagrant.d/gems GEM_PATH=$GEM_HOME:/opt/vagrant/embedded/gems PATH=/opt/vagrant/embedded/bin:$PATH vagrant plugin install vagrant-libvirt
 ```
+
 ###  Post configuration if you use synced_folder. **Optional**
 ```
 dnf -y install nfs-utils
